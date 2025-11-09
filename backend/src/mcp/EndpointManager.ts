@@ -132,9 +132,11 @@ export class EndpointManager {
       const { getPaymentByPaymentId, createPaymentTransaction } = await import(
         "../services/paymentRepository.js"
       );
-      const { PLATFORM_WALLET_ADDRESS } = await import(
-        "../controllers/paymentController.js"
-      );
+
+      // Platform wallet address (can be moved to environment variable later)
+      const PLATFORM_WALLET_ADDRESS =
+        process.env.PLATFORM_WALLET_ADDRESS ||
+        "0x0000000000000000000000000000000000000000";
 
       // Check if endpoint has pricing
       const pricing = await getPricingByEndpointId(endpointId);
