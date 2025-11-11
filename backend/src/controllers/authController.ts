@@ -120,17 +120,25 @@ export async function signup(req: Request, res: Response): Promise<void> {
     }
 
     log.info(`[AuthController] User registered: ${email}`);
+    log.info(
+      `[AuthController] User metadata: ${JSON.stringify(data.user.user_metadata)}`
+    );
+
+    // Wait a moment for the database trigger to create the profile
+    await new Promise((resolve) => setTimeout(resolve, 200));
 
     // Fetch full name from profile
     const fullName = await getFullNameFromProfile(data.user.id);
+    log.info(`[AuthController] Fetched full_name from profile: ${fullName}`);
 
     res.status(201).json({
       success: true,
-      message:
-        "User registered successfully. Please check your email for verification.",
+      message: "User created successfully",
       user: toAuthUser(data.user, fullName),
-      access_token: data.session?.access_token,
-      refresh_token: data.session?.refresh_token,
+      session: {
+        access_token: data.session?.access_token,
+        refresh_token: data.session?.refresh_token,
+      },
     });
   } catch (error: any) {
     log.error(`[AuthController] Signup error: ${error.message}`);
