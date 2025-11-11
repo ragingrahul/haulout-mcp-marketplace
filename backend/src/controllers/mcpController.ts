@@ -48,6 +48,7 @@ export async function getConnectionInfo(
         : undefined,
       format: "streamable-http" as const,
       endpoints_count: endpointCount,
+      oauth_required: true,
     };
 
     log.info(`Provided connection info to user ${userId}`);
@@ -55,24 +56,24 @@ export async function getConnectionInfo(
     res.json({
       success: true,
       connection: connectionInfo,
-      usage_instructions: {
-        claude_desktop: {
-          step1: "Open Claude Desktop settings",
-          step2: "Navigate to 'Developer' → 'Edit Config'",
-          step3: "Add the following to your mcpServers configuration:",
-          config: {
-            [userEmail?.split("@")[0] || "my-mcp-server"]: {
-              command: "npx",
-              args: [
-                "-y",
-                "@modelcontextprotocol/client-http",
-                connectionInfo.url_by_id,
-              ],
-            },
-          },
-          step4: "Restart Claude Desktop",
-          note: "For Streamable HTTP transport, Claude Desktop uses the HTTP client wrapper",
+      architecture: {
+        url_format: "/mcp/{developerId}",
+        description:
+          "URL contains developer ID whose endpoints you want to use",
+        authentication: "OAuth token identifies the end user (you)",
+        examples: {
+          use_own_endpoints: `${baseUrl}/mcp/${userId}`,
+          use_other_developer: `${baseUrl}/mcp/other-developer-id`,
         },
+      },
+      usage_instructions: {
+        step1: "Create OAuth credentials via POST /api/auth/oauth/clients",
+        step2:
+          "Specify developer_id in request body (optional, defaults to your own ID)",
+        step3: "Use returned client_id and client_secret in Claude Desktop",
+        step4:
+          "Configure Claude Desktop with the MCP URL and OAuth credentials",
+        note: "The URL determines which developer's tools you use; OAuth determines who you are",
       },
     });
   } catch (error: any) {
