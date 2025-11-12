@@ -13,11 +13,7 @@ import { MCPServerRegistry } from "./mcp/MCPServerRegistry.js";
 import { createEndpointRoutes } from "./routes/endpointRoutes.js";
 import { createHealthRoutes } from "./routes/healthRoutes.js";
 import { createAuthRoutes } from "./routes/authRoutes.js";
-import {
-  createMCPRoutes,
-  closeAllTransports,
-  getOrCreateTransport,
-} from "./routes/mcpRoutes.js";
+import { createMCPRoutes, closeAllTransports } from "./routes/mcpRoutes.js";
 
 import { getAllUsersWithEndpoints } from "./services/endpointRepository.js";
 
@@ -58,6 +54,53 @@ async function main(): Promise<void> {
   // Create Express app
   const app = express();
 
+  // DEBUG: Comprehensive request logger
+  app.use((req, res, next) => {
+    const timestamp = new Date().toISOString();
+    const requestId = Math.random().toString(36).substring(7);
+
+    // Log all requests
+    if (!req.path.includes("/health")) {
+      console.log(`\n[${timestamp}] [${requestId}] ${req.method} ${req.path}`);
+      console.log(
+        "Query:",
+        Object.keys(req.query).length > 0 ? JSON.stringify(req.query) : "(none)"
+      );
+      console.log("Headers:", {
+        "user-agent": req.headers["user-agent"],
+        authorization: req.headers.authorization ? "Present" : "Missing",
+        origin: req.headers["origin"],
+        "content-type": req.headers["content-type"],
+      });
+    }
+
+    // Capture response
+    const originalSend = res.send;
+    const originalJson = res.json;
+
+    res.send = function (data) {
+      if (!req.path.includes("/health")) {
+        console.log(`[${requestId}] Response: ${res.statusCode}`);
+        if (res.statusCode >= 400) {
+          console.log("Response Headers:", res.getHeaders());
+        }
+      }
+      return originalSend.call(this, data);
+    };
+
+    res.json = function (data) {
+      if (!req.path.includes("/health")) {
+        console.log(`[${requestId}] Response: ${res.statusCode} (JSON)`);
+        if (res.statusCode >= 400) {
+          console.log("Error Response:", JSON.stringify(data, null, 2));
+        }
+      }
+      return originalJson.call(this, data);
+    };
+
+    next();
+  });
+
   // Conditional JSON parsing - SKIP for MCP endpoints
   app.use((req, res, next) => {
     // Don't parse JSON for root MCP endpoint or /mcp/* paths
@@ -73,6 +116,9 @@ async function main(): Promise<void> {
     }
   });
 
+  // Parse URL-encoded bodies (for OAuth token requests - required by OAuth 2.1 spec)
+  app.use(express.urlencoded({ extended: true }));
+
   // CORS middleware (optional - enable if needed for frontend)
   app.use((req, res, next) => {
     res.header("Access-Control-Allow-Origin", "*");
@@ -82,7 +128,7 @@ async function main(): Promise<void> {
     );
     res.header(
       "Access-Control-Allow-Headers",
-      "Origin, X-Requested-With, Content-Type, Accept, Authorization"
+      "Origin, X-Requested-With, Content-Type, Accept, Authorization, mcp-protocol-version"
     );
 
     if (req.method === "OPTIONS") {
@@ -106,47 +152,39 @@ async function main(): Promise<void> {
   // Health check routes (public)
   app.use("/health", createHealthRoutes());
 
-  // Root MCP endpoint - serves default user's MCP server
-  app.all("/", async (req, res) => {
-    try {
-      // Get default user ID from environment or use the first user with endpoints
-      let defaultUserId = process.env.DEFAULT_MCP_USER_ID;
-
-      if (!defaultUserId) {
-        // If no default, use the first active user
-        const activeUsers = registry.getActiveUserIds();
-        if (activeUsers.length > 0) {
-          defaultUserId = activeUsers[0];
-          log.info(
-            `[Server] Using first active user as default: ${defaultUserId}`
-          );
-        } else {
-          // No users with endpoints yet
-          res.status(503).json({
-            error: "No MCP servers available",
-            message: "Please add endpoints first via POST /api/endpoints",
-            help: {
-              signup: "POST /api/auth/signup",
-              login: "POST /api/auth/login",
-              add_endpoint: "POST /api/endpoints (requires auth)",
-            },
-          });
-          return;
-        }
-      }
-
-      // Handle MCP connection for the default user
-      const transport = await getOrCreateTransport(defaultUserId, registry);
-      await transport.handleRequest(req as any, res as any);
-    } catch (error: any) {
-      log.error(`[Server] Error handling root MCP request: ${error.message}`);
-      if (!res.headersSent) {
-        res.status(500).json({
-          error: "Internal server error",
-          message: error.message,
-        });
-      }
-    }
+  // Root endpoint - Information about the service
+  app.get("/", (_req, res) => {
+    res.json({
+      name: "MCP Marketplace Server",
+      version: "1.0.0",
+      description: "OAuth 2.1 protected MCP server with dynamic endpoints",
+      endpoints: {
+        health: "/health",
+        auth: {
+          signup: "POST /api/auth/signup",
+          login: "POST /api/auth/login",
+          profile: "GET /api/auth/profile",
+        },
+        oauth: {
+          discovery: "GET /.well-known/oauth-protected-resource",
+          authorize: "GET /api/auth/oauth/authorize",
+          token: "POST /api/auth/oauth/token",
+          clients: "GET /api/auth/oauth/clients",
+        },
+        mcp: {
+          connection: "GET /api/mcp/connection",
+          server_by_id: "ALL /mcp/:userId (requires OAuth)",
+          server_by_username: "ALL /mcp/u/:username (requires OAuth)",
+        },
+        endpoints: {
+          create: "POST /api/endpoints",
+          list: "GET /api/endpoints",
+          update: "PUT /api/endpoints/:id",
+          delete: "DELETE /api/endpoints/:name",
+        },
+      },
+      documentation: "https://github.com/your-repo/mcp-marketplace",
+    });
   });
 
   // Error handling middleware

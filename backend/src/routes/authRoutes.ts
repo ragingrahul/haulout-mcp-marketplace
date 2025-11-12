@@ -11,6 +11,15 @@ import {
   getProfile,
   refreshToken,
 } from "../controllers/authController.js";
+import {
+  authorize,
+  authorizeCallback,
+  token,
+  generateClientCredentials,
+  getClients,
+  revokeClient,
+  registerClient,
+} from "../controllers/oauthController.js";
 import { verifyToken } from "../middleware/auth.middleware.js";
 
 /**
@@ -37,6 +46,29 @@ export function createAuthRoutes(): Router {
 
   // POST /api/auth/logout - Logout user
   router.post("/logout", verifyToken, logout);
+
+  // OAuth 2.1 routes
+  // GET /api/auth/oauth/authorize - OAuth authorization endpoint
+  router.get("/oauth/authorize", authorize);
+
+  // POST /api/auth/oauth/authorize/callback - OAuth authorization callback
+  router.post("/oauth/authorize/callback", verifyToken, authorizeCallback);
+
+  // POST /api/auth/oauth/token - OAuth token endpoint
+  router.post("/oauth/token", token);
+
+  // POST /api/auth/oauth/register - Dynamic Client Registration (RFC 7591)
+  router.post("/oauth/register", registerClient);
+
+  // OAuth client management (protected)
+  // POST /api/auth/oauth/clients - Create new OAuth client
+  router.post("/oauth/clients", verifyToken, generateClientCredentials);
+
+  // GET /api/auth/oauth/clients - Get user's OAuth clients
+  router.get("/oauth/clients", verifyToken, getClients);
+
+  // DELETE /api/auth/oauth/clients/:clientId - Revoke OAuth client
+  router.delete("/oauth/clients/:clientId", verifyToken, revokeClient);
 
   return router;
 }

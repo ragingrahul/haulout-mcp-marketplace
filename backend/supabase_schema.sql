@@ -361,3 +361,132 @@ COMMENT ON TABLE public.endpoint_pricing IS 'Stores pricing configuration for pa
 COMMENT ON TABLE public.user_balances IS 'Tracks user balances in the platform wallet (internal accounting)';
 COMMENT ON TABLE public.payment_transactions IS 'Audit trail of all payment transactions';
 
+-- =====================================================
+-- OAuth 2.1 Authorization Tables
+-- =====================================================
+
+-- Table: oauth_clients
+-- Stores OAuth client credentials for MCP access
+CREATE TABLE IF NOT EXISTS public.oauth_clients (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    client_id TEXT UNIQUE NOT NULL,
+    client_secret_hash TEXT NOT NULL,
+    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE, -- Nullable for DCR clients (assigned on first authorization)
+    client_name TEXT,
+    scopes TEXT[] DEFAULT ARRAY['mcp:tools', 'mcp:resources'],
+    redirect_uris TEXT[] DEFAULT ARRAY[]::TEXT[],
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    last_used_at TIMESTAMP WITH TIME ZONE,
+    revoked BOOLEAN DEFAULT FALSE
+);
+
+-- Indexes
+CREATE INDEX IF NOT EXISTS idx_oauth_clients_user_id ON public.oauth_clients(user_id);
+CREATE INDEX IF NOT EXISTS idx_oauth_clients_client_id ON public.oauth_clients(client_id) WHERE NOT revoked;
+
+-- Enable RLS
+ALTER TABLE public.oauth_clients ENABLE ROW LEVEL SECURITY;
+
+-- RLS Policies for oauth_clients
+DROP POLICY IF EXISTS "Users can view their own OAuth clients" ON public.oauth_clients;
+DROP POLICY IF EXISTS "Users can create their own OAuth clients" ON public.oauth_clients;
+DROP POLICY IF EXISTS "Users can update their own OAuth clients" ON public.oauth_clients;
+
+CREATE POLICY "Users can view their own OAuth clients"
+    ON public.oauth_clients
+    FOR SELECT
+    USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can create their own OAuth clients"
+    ON public.oauth_clients
+    FOR INSERT
+    WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can update their own OAuth clients"
+    ON public.oauth_clients
+    FOR UPDATE
+    USING (auth.uid() = user_id);
+
+-- Trigger for updated_at
+DROP TRIGGER IF EXISTS update_oauth_clients_last_used ON public.oauth_clients;
+
+-- Table: authorization_codes
+-- Temporary storage for OAuth authorization codes
+CREATE TABLE IF NOT EXISTS public.authorization_codes (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    code TEXT UNIQUE NOT NULL,
+    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    client_id TEXT NOT NULL,
+    redirect_uri TEXT NOT NULL,
+    code_challenge TEXT NOT NULL,
+    code_challenge_method TEXT NOT NULL CHECK (code_challenge_method IN ('S256')),
+    scopes TEXT[] NOT NULL,
+    expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    used BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Indexes
+CREATE INDEX IF NOT EXISTS idx_authorization_codes_code ON public.authorization_codes(code) WHERE NOT used;
+CREATE INDEX IF NOT EXISTS idx_authorization_codes_expires ON public.authorization_codes(expires_at) WHERE NOT used;
+
+-- Enable RLS
+ALTER TABLE public.authorization_codes ENABLE ROW LEVEL SECURITY;
+
+-- RLS Policies for authorization_codes (service account only)
+DROP POLICY IF EXISTS "Service can manage authorization codes" ON public.authorization_codes;
+
+CREATE POLICY "Service can manage authorization codes"
+    ON public.authorization_codes
+    FOR ALL
+    USING (true)
+    WITH CHECK (true);
+
+-- Table: refresh_tokens
+-- Storage for refresh tokens
+CREATE TABLE IF NOT EXISTS public.refresh_tokens (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    token_hash TEXT UNIQUE NOT NULL,
+    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    client_id TEXT NOT NULL,
+    scopes TEXT[] NOT NULL,
+    expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    revoked BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    last_used_at TIMESTAMP WITH TIME ZONE
+);
+
+-- Indexes
+CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user_id ON public.refresh_tokens(user_id);
+CREATE INDEX IF NOT EXISTS idx_refresh_tokens_token_hash ON public.refresh_tokens(token_hash) WHERE NOT revoked;
+
+-- Enable RLS
+ALTER TABLE public.refresh_tokens ENABLE ROW LEVEL SECURITY;
+
+-- RLS Policies for refresh_tokens
+DROP POLICY IF EXISTS "Users can view their own refresh tokens" ON public.refresh_tokens;
+
+CREATE POLICY "Users can view their own refresh tokens"
+    ON public.refresh_tokens
+    FOR SELECT
+    USING (auth.uid() = user_id);
+
+-- Grant access
+GRANT SELECT, INSERT, UPDATE ON public.oauth_clients TO authenticated;
+GRANT SELECT, INSERT, UPDATE ON public.authorization_codes TO authenticated;
+GRANT SELECT, INSERT, UPDATE ON public.refresh_tokens TO authenticated;
+
+-- Comments for documentation
+COMMENT ON TABLE public.oauth_clients IS 'OAuth 2.1 client credentials for MCP server access';
+COMMENT ON TABLE public.authorization_codes IS 'Temporary storage for OAuth authorization codes (10 minute expiry)';
+COMMENT ON TABLE public.refresh_tokens IS 'Long-lived refresh tokens for obtaining new access tokens';
+
+-- Cleanup function for expired authorization codes (run periodically)
+CREATE OR REPLACE FUNCTION public.cleanup_expired_auth_codes()
+RETURNS void AS $$
+BEGIN
+    DELETE FROM public.authorization_codes
+    WHERE expires_at < NOW() - INTERVAL '1 hour';
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+

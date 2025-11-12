@@ -10,7 +10,12 @@ import {
   getConnectionInfo,
   mcpHealthCheck,
 } from "../controllers/mcpController.js";
-import { verifyToken } from "../middleware/auth.middleware.js";
+import {
+  getProtectedResourceMetadata,
+  getAuthorizationServerMetadata,
+} from "../controllers/oauthController.js";
+import { verifyToken, verifyMCPToken } from "../middleware/auth.middleware.js";
+import { AuthenticatedRequest } from "../types/auth.types.js";
 
 // Configure logging
 const log = {
@@ -160,37 +165,60 @@ async function resolveUsername(
 export function createMCPRoutes(registry: MCPServerRegistry): Router {
   const router = express.Router();
 
+  // OAuth 2.1 Discovery Endpoints (public)
+  router.get(
+    "/.well-known/oauth-protected-resource",
+    getProtectedResourceMetadata
+  );
+  router.get(
+    "/.well-known/oauth-authorization-server",
+    getAuthorizationServerMetadata
+  );
+
   // Developer API: Get connection info (requires auth)
   router.get("/api/mcp/connection", verifyToken, getConnectionInfo);
 
   // Health check
   router.get("/api/mcp/health", mcpHealthCheck);
 
-  // DUAL-ID STRUCTURE: /mcp/{developerId}/user/{endUserId}
-  // Developer creates tools, end user pays for using them
-  router.all("/mcp/:developerId/user/:endUserId", async (req, res) => {
+  // MCP endpoint: /mcp/{developerId}
+  // URL contains developer ID (whose tools to use)
+  // OAuth token identifies the end user (who is using the tools)
+  // NOW PROTECTED with OAuth authentication
+  router.all("/mcp/:developerId", verifyMCPToken, async (req, res) => {
     const developerId = req.params.developerId;
-    const endUserId = req.params.endUserId;
+    const authReq = req as AuthenticatedRequest;
 
+    // OAuth token tells us who the end user is
+    const endUserId = authReq.user?.id;
+
+    if (!endUserId) {
+      res.status(401).json({
+        error: "unauthorized",
+        error_description: "Valid OAuth token required",
+      });
+      return;
+    }
+
+    log.info(
+      `[MCPRoutes] MCP connection: developer=${developerId} endUser=${endUserId} (from OAuth token)`
+    );
+
+    // Developer's tools, end user's authentication & payment
     await handleMCPConnection(req, res, registry, developerId, endUserId);
   });
 
-  // LEGACY: Single user ID (developer using their own tools)
-  // Kept for backwards compatibility
-  router.all("/mcp/:userId", async (req, res) => {
-    const userId = req.params.userId;
-    // Use same ID for both developer and end user (self-use)
-    await handleMCPConnection(req, res, registry, userId, userId);
-  });
-
-  // MCP Streamable HTTP endpoint by username (public - no auth required)
-  router.all("/mcp/u/:username", async (req, res) => {
+  // MCP Streamable HTTP endpoint by username
+  // URL contains developer username (whose tools to use)
+  // OAuth token identifies the end user (who is using the tools)
+  router.all("/mcp/u/:username", verifyMCPToken, async (req, res) => {
     const username = req.params.username;
+    const authReq = req as AuthenticatedRequest;
 
-    // Resolve username to userId
-    const userId = await resolveUsername(username, registry);
+    // Resolve username to developer userId
+    const developerId = await resolveUsername(username, registry);
 
-    if (!userId) {
+    if (!developerId) {
       res.status(404).json({
         error: "MCP server not found for this username",
         username: username,
@@ -198,8 +226,23 @@ export function createMCPRoutes(registry: MCPServerRegistry): Router {
       return;
     }
 
-    // Self-use: same ID for both
-    await handleMCPConnection(req, res, registry, userId, userId);
+    // OAuth token tells us who the end user is
+    const endUserId = authReq.user?.id;
+
+    if (!endUserId) {
+      res.status(401).json({
+        error: "unauthorized",
+        error_description: "Valid OAuth token required",
+      });
+      return;
+    }
+
+    log.info(
+      `[MCPRoutes] MCP connection via username: developer=${developerId} (${username}) endUser=${endUserId}`
+    );
+
+    // Developer's tools, end user's authentication & payment
+    await handleMCPConnection(req, res, registry, developerId, endUserId);
   });
 
   // Reload endpoint transport for a user (admin/development use)
