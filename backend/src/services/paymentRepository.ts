@@ -52,7 +52,7 @@ export async function createPaymentTransaction(
   }
 
   log.info(
-    `Created payment transaction: ${paymentId} (${amountEth} ETH from platform to ${developerWallet})`
+    `Created payment transaction: ${paymentId} (${amountEth} from platform to ${developerWallet})`
   );
   return data;
 }
