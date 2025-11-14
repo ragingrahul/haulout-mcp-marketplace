@@ -14,6 +14,7 @@ import { createEndpointRoutes } from "./routes/endpointRoutes.js";
 import { createHealthRoutes } from "./routes/healthRoutes.js";
 import { createAuthRoutes } from "./routes/authRoutes.js";
 import { createMCPRoutes, closeAllTransports } from "./routes/mcpRoutes.js";
+import paymentRoutes from "./routes/paymentRoutes.js";
 
 import { getAllUsersWithEndpoints } from "./services/endpointRepository.js";
 
@@ -145,6 +146,9 @@ async function main(): Promise<void> {
 
   // Endpoint management routes (protected with authentication)
   app.use("/api/endpoints", createEndpointRoutes(registry));
+
+  // Payment routes (protected with authentication)
+  app.use("/api", paymentRoutes);
 
   // MCP routes (includes both public MCP endpoints and protected connection info)
   app.use(createMCPRoutes(registry));
