@@ -4,7 +4,7 @@
  */
 
 // Export wallet service interfaces
-export {
+export type {
   IWalletService,
   WalletCreateResult,
   TransferParams,
@@ -13,17 +13,18 @@ export {
 } from "../../core/interfaces/IWalletService.js";
 
 // Export transaction service interfaces
-export {
+export type {
   ITransactionService,
   TransactionDetails,
   TransactionHistoryItem,
-  TransactionStatus,
   BatchTransferParams,
   BatchTransferResult,
   GasEstimationParams,
   GasEstimation,
   TransactionFilter,
 } from "../../core/interfaces/ITransactionService.js";
+
+export { TransactionStatus } from "../../core/interfaces/ITransactionService.js";
 
 // Export wallet service implementations
 export { SuiWalletService } from "./SuiWalletService.js";
