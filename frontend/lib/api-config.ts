@@ -24,6 +24,7 @@ export const API_ENDPOINTS = {
   endpoints: {
     base: `${API_BASE_URL}/api/endpoints`,
     byId: (id: string) => `${API_BASE_URL}/api/endpoints/${id}`,
+    marketplace: `${API_BASE_URL}/api/endpoints/marketplace`,
   },
   payment: {
     balance: `${API_BASE_URL}/api/balance`,
