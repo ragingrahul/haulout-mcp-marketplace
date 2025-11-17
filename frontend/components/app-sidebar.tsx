@@ -11,6 +11,7 @@ import {
 
 import { NavMain } from "@/components/nav-main";
 import { NavUser } from "@/components/nav-user";
+import { WalletConnectButton } from "@/components/wallet-connect-button";
 import {
   Sidebar,
   SidebarContent,
@@ -75,6 +76,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         <NavMain items={data.navMain} />
       </SidebarContent>
       <SidebarFooter>
+        <WalletConnectButton />
         <NavUser />
       </SidebarFooter>
       <SidebarRail />

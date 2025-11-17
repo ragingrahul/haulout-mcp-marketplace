@@ -53,7 +53,7 @@ export function WalletConnectButton() {
     return (
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="outline" size="lg" className="w-full gap-2">
+          <Button variant="outline" size="sm" className="w-full gap-2">
             <Wallet className="h-4 w-4" />
             {formatAddress(address)}
           </Button>
@@ -117,13 +117,6 @@ export function WalletConnectButton() {
     );
   }
 
-  // If not connected, use Suiet's built-in ConnectButton with custom styling
-  return (
-    <ConnectButton className="w-full">
-      <Button variant="outline" size="lg" className="w-full gap-2">
-        <Wallet className="h-4 w-4" />
-        Connect Wallet
-      </Button>
-    </ConnectButton>
-  );
+  // If not connected, use Suiet's built-in ConnectButton with custom styling via CSS
+  return <ConnectButton />;
 }

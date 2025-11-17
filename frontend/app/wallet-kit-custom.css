@@ -1,0 +1,72 @@
+/**
+ * Suiet Wallet Kit Custom Styles
+ * Customizes the ConnectButton to fit the sidebar design
+ * Must be imported AFTER @suiet/wallet-kit/style.css
+ */
+
+:root {
+  /* Customize button width to fit sidebar */
+  --wkit-button-width: 100%;
+  
+  /* Remove border radius */
+  --wkit-border-radius: 0px;
+  
+  /* Adjust font sizes to match sidebar */
+  --wkit-font-size-medium: 14px;
+  --wkit-line-height-medium: 20px;
+}
+
+/* Custom button styling to match sidebar theme - using higher specificity */
+button.wkit-button,
+.wkit-button {
+  width: calc(100% - 16px) !important;
+  max-width: calc(100% - 16px) !important;
+  height: 36px !important; /* Small button height (size="sm" equivalent) */
+  border-radius: 8px !important;
+  padding: 0 8px !important;
+  margin: 0 8px !important;
+  font-weight: 400 !important;
+  border: 1px solid hsl(var(--border)) !important;
+  background: #ffdd2c !important; /* Yellow background */
+  background-color: #ffdd2c !important;
+  color: #000000 !important;
+  transition: all 0.2s !important;
+  box-sizing: border-box !important;
+}
+
+button.wkit-button:hover,
+.wkit-button:hover {
+  background: #ffd700 !important; /* Slightly darker yellow on hover */
+  background-color: #ffd700 !important;
+  color: #000000 !important;
+}
+
+/* Ensure button text is properly sized and colored */
+button.wkit-button > span,
+.wkit-button > span,
+button.wkit-button span,
+.wkit-button span {
+  font-size: 10px !important;
+  color: #000000 !important;
+}
+
+/* Fix for Suiet wallet kit's internal components with empty src */
+/* Hide images with empty or undefined src to prevent console warnings */
+img[src=""],
+img[src="undefined"],
+img:not([src]),
+.wkit-select-item__icon-img[src=""],
+.wkit-select-item__icon-img:not([src]) {
+  display: none !important;
+  content: none !important;
+  visibility: hidden !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+/* Ensure wallet icons still show when they have valid src */
+.wkit-select-item__icon-img[src]:not([src=""]):not([src="undefined"]) {
+  display: block !important;
+  visibility: visible !important;
+}
+
