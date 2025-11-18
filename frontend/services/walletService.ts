@@ -13,10 +13,13 @@ export interface UserBalance {
 
 export interface BalanceResponse {
   success: boolean;
-  balance_sui: string; // Backend returns balance_sui (not balance_eth)
+  balance_sui: string; // Calculated balance (deposits - spent)
   total_deposited_sui: string;
   total_spent_sui: string;
-  platform_wallet_address?: string;
+  wallet_address?: string; // User's connected wallet
+  native_sui_balance?: string; // Native SUI balance in wallet
+  has_balance_account?: boolean; // Whether on-chain balance tracking exists
+  balance_object_id?: string; // Sui object ID of UserBalance object
   blockchain?: string; // Backend also sends blockchain info
   network?: string; // Backend also sends network info
 }
@@ -88,6 +91,66 @@ export class WalletService {
   }
 
   /**
+   * Connect wallet to user account
+   * @param accessToken - Current access token
+   * @param walletAddress - Sui wallet address
+   * @returns Connection confirmation
+   */
+  static async connectWallet(
+    accessToken: string,
+    walletAddress: string
+  ): Promise<{
+    success: boolean;
+    message: string;
+    wallet_address?: string;
+  }> {
+    return this.makeRequest<{
+      success: boolean;
+      message: string;
+      wallet_address?: string;
+    }>(API_ENDPOINTS.wallet.connect, accessToken, {
+      method: "POST",
+      body: JSON.stringify({ wallet_address: walletAddress }),
+    });
+  }
+
+  /**
+   * Disconnect wallet from user account
+   * @param accessToken - Current access token
+   * @returns Disconnection confirmation
+   */
+  static async disconnectWallet(accessToken: string): Promise<{
+    success: boolean;
+    message: string;
+  }> {
+    return this.makeRequest<{
+      success: boolean;
+      message: string;
+    }>(API_ENDPOINTS.wallet.disconnect, accessToken, {
+      method: "POST",
+    });
+  }
+
+  /**
+   * Get connected wallet address
+   * @param accessToken - Current access token
+   * @returns Wallet connection status
+   */
+  static async getConnectedWallet(accessToken: string): Promise<{
+    success: boolean;
+    wallet_address: string | null;
+    is_connected: boolean;
+  }> {
+    return this.makeRequest<{
+      success: boolean;
+      wallet_address: string | null;
+      is_connected: boolean;
+    }>(API_ENDPOINTS.wallet.get, accessToken, {
+      method: "GET",
+    });
+  }
+
+  /**
    * Get user's wallet balance
    * @param accessToken - Current access token
    * @returns User balance information
@@ -95,7 +158,10 @@ export class WalletService {
   static async getBalance(accessToken: string): Promise<{
     success: boolean;
     balance: UserBalance;
-    platformWalletAddress?: string;
+    walletAddress?: string;
+    nativeSuiBalance?: string;
+    has_balance_account?: boolean;
+    balance_object_id?: string;
     blockchain?: string;
     network?: string;
   }> {
@@ -115,7 +181,10 @@ export class WalletService {
         total_deposited_sui: response.total_deposited_sui,
         total_spent_sui: response.total_spent_sui,
       },
-      platformWalletAddress: response.platform_wallet_address,
+      walletAddress: response.wallet_address,
+      nativeSuiBalance: response.native_sui_balance,
+      has_balance_account: response.has_balance_account,
+      balance_object_id: response.balance_object_id,
       blockchain: response.blockchain,
       network: response.network,
     };

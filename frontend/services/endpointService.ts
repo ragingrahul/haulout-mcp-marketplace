@@ -30,6 +30,11 @@ export interface Endpoint {
   requires_payment?: boolean; // Backend sends this
   price_per_call_eth?: string | null; // Backend sends this
   developer_wallet_address?: string | null; // Backend sends this
+  // Blockchain fields
+  objectId?: string; // Sui object ID
+  walrusBlobId?: string; // Walrus blob pointer
+  onChain?: boolean; // Whether stored on blockchain
+  totalCalls?: number; // Total API calls (from blockchain)
 }
 
 export interface Developer {
@@ -52,6 +57,7 @@ export interface EndpointsResponse {
   endpoints: Endpoint[];
   count: number;
   message?: string;
+  wallet_connected?: boolean;
 }
 
 /**
@@ -148,7 +154,79 @@ export class EndpointService {
   }
 
   /**
-   * Create a new endpoint
+   * Prepare endpoint creation (Step 1: Get transaction to sign)
+   * @param accessToken - Current access token
+   * @param endpoint - Endpoint data
+   * @returns Transaction data for user to sign
+   */
+  static async prepareEndpoint(
+    accessToken: string,
+    endpoint: Partial<Endpoint>
+    //eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ): Promise<any> {
+    return this.makeRequest(
+      `${API_ENDPOINTS.endpoints.base}/prepare`,
+      accessToken,
+      {
+        method: "POST",
+        body: JSON.stringify(endpoint),
+      }
+    );
+  }
+
+  /**
+   * Complete endpoint creation (Step 2: After user signs)
+   * @param accessToken - Current access token
+   * @param txDigest - Transaction digest from blockchain
+   * @param walrusBlobId - Blob ID from prepare step
+   * @param endpoint - Original endpoint data
+   * @returns Created endpoint details
+   */
+  static async completeEndpoint(
+    accessToken: string,
+    txDigest: string,
+    walrusBlobId: string,
+    endpoint: Partial<Endpoint>
+    //eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ): Promise<any> {
+    console.log("=== EndpointService.completeEndpoint CALLED ===");
+    console.log("  txDigest:", txDigest, "| type:", typeof txDigest);
+    console.log(
+      "  walrusBlobId:",
+      walrusBlobId,
+      "| type:",
+      typeof walrusBlobId
+    );
+    console.log("  endpoint:", endpoint, "| type:", typeof endpoint);
+
+    const payload = {
+      txDigest,
+      walrusBlobId,
+      endpoint,
+    };
+    console.log("Payload object:", payload);
+    console.log("Payload keys:", Object.keys(payload));
+    console.log("Payload values check:");
+    console.log("  payload.txDigest:", payload.txDigest);
+    console.log("  payload.walrusBlobId:", payload.walrusBlobId);
+    console.log("  payload.endpoint:", payload.endpoint);
+    console.log("Payload stringified:", JSON.stringify(payload, null, 2));
+
+    const url = `${API_ENDPOINTS.endpoints.base}/complete`;
+    console.log("URL:", url);
+
+    return this.makeRequest(url, accessToken, {
+      method: "POST",
+      body: JSON.stringify(payload),
+      headers: {
+        "Content-Type": "application/json",
+      },
+    });
+  }
+
+  /**
+   * Create a new endpoint (DEPRECATED - uses server signing)
+   * Use prepareEndpoint + completeEndpoint for user-signed transactions
    * @param accessToken - Current access token
    * @param endpoint - Endpoint data
    * @returns Created endpoint
