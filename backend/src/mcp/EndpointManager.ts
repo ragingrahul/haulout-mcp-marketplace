@@ -10,6 +10,7 @@ import { IHttpClient } from "../core/interfaces/IHttpClient.js";
 import { ILogger } from "../core/interfaces/ILogger.js";
 import { AxiosHttpClient } from "../infrastructure/http/AxiosHttpClient.js";
 import { LoggerFactory } from "../infrastructure/logging/LoggerFactory.js";
+import { PAYMENT_TOOLS } from "./PaymentTools.js";
 
 export class EndpointManager {
   private endpoints: Map<string, APIEndpoint>;
@@ -22,7 +23,21 @@ export class EndpointManager {
     this.tools = new Map();
     this.httpClient = httpClient || new AxiosHttpClient();
     this.logger = logger || LoggerFactory.getLogger("EndpointManager");
-    this.logger.info("Initialized endpoint manager");
+
+    // Register payment tools
+    this.registerPaymentTools();
+
+    this.logger.info("Initialized endpoint manager with payment tools");
+  }
+
+  /**
+   * Register payment tools that are available for all MCP servers
+   */
+  private registerPaymentTools(): void {
+    for (const [toolName, tool] of Object.entries(PAYMENT_TOOLS)) {
+      this.tools.set(toolName, tool);
+      this.logger.info(`Registered payment tool: ${toolName}`);
+    }
   }
 
   /**
@@ -110,25 +125,33 @@ export class EndpointManager {
    * Returns ApiResponse with 402 if payment required but not satisfied
    * Returns null if payment is not required or already satisfied
    *
-   * @param endpointId - ID of the endpoint being called
+   * @param endpoint - The endpoint object being called
    * @param endUserId - ID of end user who pays for the tool
    * @param developerId - ID of developer who receives the payment
    * @param args - Tool arguments
    */
   private async checkPaymentRequired(
-    endpointId: string,
+    endpoint: APIEndpoint,
     endUserId: string,
     developerId: string,
     args: Record<string, any>
   ): Promise<ApiResponse | null> {
     try {
-      // Dynamic imports to avoid circular dependencies
-      const { getPricingByEndpointId } = await import(
-        "../services/pricingRepository.js"
-      );
-      const { getBalanceByUserId } = await import(
-        "../services/balanceRepository.js"
-      );
+      const endpointId = endpoint.id || endpoint.name;
+
+      // Check if endpoint requires payment (blockchain endpoints have price_per_call_eth field)
+      const pricePerCall = endpoint.price_per_call_eth || "0";
+      const price = parseFloat(pricePerCall);
+
+      if (price <= 0) {
+        // No payment required - free endpoint
+        this.logger.info(
+          `Endpoint ${endpoint.name} is free (price: ${pricePerCall})`
+        );
+        return null;
+      }
+
+      // Payment required - dynamic imports for payment services
       const { getPaymentByPaymentId, createPaymentTransaction } = await import(
         "../services/paymentRepository.js"
       );
@@ -138,13 +161,8 @@ export class EndpointManager {
         process.env.PLATFORM_WALLET_ADDRESS ||
         "0x0000000000000000000000000000000000000000";
 
-      // Check if endpoint has pricing
-      const pricing = await getPricingByEndpointId(endpointId);
-
-      if (!pricing || parseFloat(pricing.price_per_call_eth) <= 0) {
-        // No payment required
-        return null;
-      }
+      // Get developer wallet address from endpoint
+      const developerWallet = endpoint.developer_wallet_address || developerId;
 
       // Check if payment_id is provided in args
       const paymentId = args._payment_id;
@@ -208,63 +226,128 @@ export class EndpointManager {
         };
       }
 
-      // No payment_id provided - need to create pending payment
-      // Check END USER's balance (who will pay)
-      const endUserBalance = await getBalanceByUserId(endUserId);
+      // No payment_id provided - check user's on-chain balance and execute payment automatically
+      // CUSTODIAL: User has deposited funds, platform deducts automatically
 
-      if (!endUserBalance) {
+      // Import balance service
+      const { getUserOnChainBalance, executeAutomaticPayment } = await import(
+        "../services/balanceService.js"
+      );
+
+      // Check user's on-chain balance
+      const userBalance = await getUserOnChainBalance(endUserId);
+
+      if (!userBalance || !userBalance.has_balance_account) {
+        this.logger.info(
+          `User ${endUserId} has no balance account - prompting deposit`
+        );
+
         return {
           success: false,
           status_code: 402,
-          message: "Payment Required - No balance found for end user",
+          message: `DEPOSIT REQUIRED - You need to deposit SUI into your balance account to use paid tools.`,
           payment_details: {
-            amount_eth: pricing.price_per_call_eth,
-            developer_wallet: pricing.developer_wallet_address,
-            developer_id: developerId,
-            next_step:
-              "Call get_deposit_address tool to get deposit instructions and fund your account",
+            action_required: "deposit",
+            reason: "No balance account found",
+            amount_needed: pricePerCall,
+            instructions: {
+              step_1: "Go to the Wallet page",
+              step_2: "Click 'Deposit Funds'",
+              step_3: `Deposit at least ${pricePerCall} SUI`,
+              step_4: "Return and call this tool again",
+            },
           },
         };
       }
 
-      // Check END USER's balance (not developer's!)
-      const currentBalance = parseFloat(endUserBalance.balance_eth);
-      const requiredAmount = parseFloat(pricing.price_per_call_eth);
+      const currentBalance = parseFloat(userBalance.balance || "0");
+      const requiredAmount = parseFloat(pricePerCall);
 
-      // Create pending payment FROM end user TO developer
-      const payment = await createPaymentTransaction(
-        endUserId, // END USER pays
-        endpointId,
-        PLATFORM_WALLET_ADDRESS,
-        pricing.developer_wallet_address, // DEVELOPER receives
-        pricing.price_per_call_eth
+      if (currentBalance < requiredAmount) {
+        this.logger.info(
+          `User ${endUserId} has insufficient balance: ${currentBalance} < ${requiredAmount}`
+        );
+
+        return {
+          success: false,
+          status_code: 402,
+          message: `INSUFFICIENT BALANCE - You have ${currentBalance.toFixed(4)} SUI, but need ${requiredAmount} SUI.`,
+          payment_details: {
+            action_required: "deposit",
+            current_balance: currentBalance.toFixed(4),
+            required: requiredAmount,
+            shortfall: (requiredAmount - currentBalance).toFixed(4),
+            instructions: {
+              step_1: "Go to the Wallet page",
+              step_2: "Click 'Deposit Funds'",
+              step_3: `Deposit at least ${(requiredAmount - currentBalance).toFixed(4)} SUI more`,
+              step_4: "Return and call this tool again",
+            },
+          },
+        };
+      }
+
+      // USER HAS SUFFICIENT BALANCE - Execute payment automatically!
+      this.logger.info(
+        `User has sufficient balance (${currentBalance} SUI >= ${requiredAmount} SUI), executing automatic payment...`
       );
 
-      return {
-        success: false,
-        status_code: 402,
-        message:
-          "💰 Payment Required - This tool costs " +
-          pricing.price_per_call_eth +
-          " ETH per call",
-        payment_details: {
-          payment_id: payment.payment_id,
-          amount_eth: pricing.price_per_call_eth,
-          developer_wallet: pricing.developer_wallet_address,
-          your_balance: currentBalance.toString(),
-          sufficient_balance: currentBalance >= requiredAmount,
-          step_1:
-            currentBalance >= requiredAmount
-              ? `Call: approve_payment(payment_id: "${payment.payment_id}")`
-              : `Insufficient balance. Need ${(requiredAmount - currentBalance).toFixed(6)} ETH more. Call get_deposit_address to fund account.`,
-          step_2:
-            currentBalance >= requiredAmount
-              ? `After approval, retry this SAME tool call but ADD this parameter: _payment_id: "${payment.payment_id}"`
-              : "After funding, call approve_payment, then retry with _payment_id",
-          warning:
-            "⚠️ If you retry without _payment_id, you'll be charged AGAIN!",
-        },
-      };
+      try {
+        const txHash = await executeAutomaticPayment(
+          userBalance.balance_object_id!,
+          endpointId,
+          pricePerCall,
+          developerWallet
+        );
+
+        this.logger.info(
+          `✅ Payment of ${pricePerCall} SUI executed successfully! TX: ${txHash}`
+        );
+
+        // Create payment record for tracking
+        const payment = await createPaymentTransaction(
+          endUserId,
+          endpointId,
+          PLATFORM_WALLET_ADDRESS,
+          developerWallet,
+          pricePerCall
+        );
+
+        // Mark as completed immediately
+        const { updatePaymentStatus } = await import(
+          "../services/paymentRepository.js"
+        );
+        const { PaymentStatus } = await import("../types/payment.types.js");
+        await updatePaymentStatus(
+          payment.payment_id,
+          PaymentStatus.COMPLETED,
+          txHash
+        );
+
+        this.logger.info(
+          `Payment record created and marked completed: ${payment.payment_id}`
+        );
+
+        // Payment completed successfully - allow tool execution
+        return null; // null means payment satisfied, proceed with tool execution
+      } catch (paymentError: any) {
+        this.logger.error(
+          `Automatic payment execution failed: ${paymentError.message}`,
+          paymentError
+        );
+
+        return {
+          success: false,
+          status_code: 500,
+          message: `Payment execution failed: ${paymentError.message}`,
+          payment_details: {
+            error: paymentError.message,
+            balance_object_id: userBalance.balance_object_id,
+            endpoint_id: endpointId,
+            amount: pricePerCall,
+          },
+        };
+      }
     } catch (error: any) {
       this.logger.error(`Payment check error: ${error.message}`, error);
       return {
@@ -291,6 +374,20 @@ export class EndpointManager {
     endUserId?: string,
     developerId?: string
   ): Promise<ApiResponse> {
+    // Check if this is a payment tool (not an endpoint)
+    if (PAYMENT_TOOLS[endpointName]) {
+      this.logger.info(`Executing payment tool: ${endpointName}`);
+      if (!endUserId) {
+        return {
+          success: false,
+          message: "User authentication required for payment tools",
+        };
+      }
+
+      const { executePaymentTool } = await import("./PaymentTools.js");
+      return await executePaymentTool(endpointName, endUserId, args);
+    }
+
     if (!this.endpoints.has(endpointName)) {
       this.logger.error(`Endpoint '${endpointName}' not found`);
       return {
@@ -316,7 +413,7 @@ export class EndpointManager {
       // Check if payment is required for this endpoint
       if (endpoint.id && endUserId && developerId) {
         const paymentCheckResult = await this.checkPaymentRequired(
-          endpoint.id,
+          endpoint, // Pass the whole endpoint object
           endUserId, // End user who pays
           developerId, // Developer who receives
           args

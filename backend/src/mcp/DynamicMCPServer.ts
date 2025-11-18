@@ -131,7 +131,49 @@ export class DynamicMCPServer {
               } else {
                 // Handle 402 Payment Required responses
                 if (result.status_code === 402 && result.payment_details) {
-                  formattedMessage = `${result.message}\n\nPayment Details:\n${JSON.stringify(result.payment_details, null, 2)}`;
+                  // Format payment response to be EXTREMELY clear for LLMs
+                  const details = result.payment_details;
+                  const paymentInfo = details.payment_info || {};
+                  const requiredAction = details.REQUIRED_ACTION || {};
+                  const nextStep = details.next_step || {};
+
+                  formattedMessage = `
+╔════════════════════════════════════════════════════════════════════════╗
+║                        PAYMENT REQUIRED                                ║
+╚════════════════════════════════════════════════════════════════════════╝
+
+${result.message || "This tool requires payment"}
+
+PAYMENT INFO:
+  • Payment ID: ${paymentInfo.payment_id || "N/A"}
+  • Amount: ${paymentInfo.amount_sui || "N/A"} SUI
+  • Endpoint ID: ${paymentInfo.endpoint_id || "N/A"}
+  • Status: ${paymentInfo.status || "pending"}
+
+⚠️  CRITICAL INSTRUCTIONS ⚠️
+${requiredAction.CRITICAL || ""}
+
+REQUIRED NEXT STEPS (DO NOT SKIP):
+
+1️⃣  STEP 1 - ${requiredAction.STEP_1_REQUIRED || "Get payment transaction"}
+    Tool to call: ${requiredAction.STEP_1_TOOL || "get_payment_transaction"}
+    Parameters: ${JSON.stringify(requiredAction.STEP_1_PARAMS || {}, null, 2)}
+
+2️⃣  STEP 2 - ${requiredAction.STEP_2_REQUIRED || "Sign transaction"}
+
+3️⃣  STEP 3 - ${requiredAction.STEP_3_REQUIRED || "Verify payment"}
+    Tool to call: ${requiredAction.STEP_3_TOOL || "verify_payment"}
+
+4️⃣  STEP 4 - ${requiredAction.STEP_4_REQUIRED || "Retry tool with payment_id"}
+
+⛔ ${requiredAction.WARNING || ""}
+
+➡️  IMMEDIATE ACTION: ${nextStep.do_not || "Follow the payment process"}
+
+NEXT TOOL TO CALL:
+  Tool: ${nextStep.tool || ""}
+  Parameters: ${JSON.stringify(nextStep.parameters || {}, null, 2)}
+`;
                 } else {
                   formattedMessage = result.message || "Unknown error occurred";
                 }
