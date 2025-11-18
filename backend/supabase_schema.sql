@@ -490,3 +490,41 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
+CREATE TABLE IF NOT EXISTS user_endpoints (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  wallet_address TEXT NOT NULL,
+  endpoint_object_id TEXT NOT NULL,
+  endpoint_name TEXT NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(endpoint_object_id)
+);
+
+-- Create indexes for fast queries
+CREATE INDEX IF NOT EXISTS idx_user_endpoints_wallet ON user_endpoints(wallet_address);
+CREATE INDEX IF NOT EXISTS idx_user_endpoints_user ON user_endpoints(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_endpoints_object_id ON user_endpoints(endpoint_object_id);
+
+-- Enable RLS
+ALTER TABLE user_endpoints ENABLE ROW LEVEL SECURITY;
+
+-- Policy: Users can read their own mappings
+CREATE POLICY "Users can read their own endpoint mappings"
+  ON user_endpoints FOR SELECT
+  USING (auth.uid() = user_id);
+
+-- Policy: Users can insert their own mappings (via authenticated backend)
+CREATE POLICY "Users can insert their own endpoint mappings"
+  ON user_endpoints FOR INSERT
+  WITH CHECK (auth.uid() = user_id);
+
+-- Policy: Users can delete their own mappings
+CREATE POLICY "Users can delete their own endpoint mappings"
+  ON user_endpoints FOR DELETE
+  USING (auth.uid() = user_id);
+
+-- Comment
+COMMENT ON TABLE user_endpoints IS 'Maps users to their blockchain endpoint objects. Quick fix for endpoint ownership.';
+
+
+

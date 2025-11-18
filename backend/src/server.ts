@@ -14,6 +14,7 @@ import { createEndpointRoutes } from "./routes/endpointRoutes.js";
 import { createHealthRoutes } from "./routes/healthRoutes.js";
 import { createAuthRoutes } from "./routes/authRoutes.js";
 import { createMCPRoutes, closeAllTransports } from "./routes/mcpRoutes.js";
+import { createWalletRoutes } from "./routes/walletRoutes.js";
 import paymentRoutes from "./routes/paymentRoutes.js";
 
 import { getAllUsersWithEndpoints } from "./services/endpointRepository.js";
@@ -150,6 +151,9 @@ async function main(): Promise<void> {
   // Payment routes (protected with authentication)
   app.use("/api", paymentRoutes);
 
+  // Wallet routes (protected with authentication)
+  app.use("/api/wallet", createWalletRoutes());
+
   // MCP routes (includes both public MCP endpoints and protected connection info)
   app.use(createMCPRoutes(registry));
 
@@ -185,6 +189,11 @@ async function main(): Promise<void> {
           list: "GET /api/endpoints",
           update: "PUT /api/endpoints/:id",
           delete: "DELETE /api/endpoints/:name",
+        },
+        wallet: {
+          connect: "POST /api/wallet/connect",
+          disconnect: "POST /api/wallet/disconnect",
+          get: "GET /api/wallet",
         },
       },
       documentation: "https://github.com/your-repo/mcp-marketplace",
