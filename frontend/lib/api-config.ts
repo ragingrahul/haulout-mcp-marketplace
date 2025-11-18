@@ -26,6 +26,11 @@ export const API_ENDPOINTS = {
     byId: (id: string) => `${API_BASE_URL}/api/endpoints/${id}`,
     marketplace: `${API_BASE_URL}/api/endpoints/marketplace`,
   },
+  wallet: {
+    connect: `${API_BASE_URL}/api/wallet/connect`,
+    disconnect: `${API_BASE_URL}/api/wallet/disconnect`,
+    get: `${API_BASE_URL}/api/wallet`,
+  },
   payment: {
     balance: `${API_BASE_URL}/api/balance`,
     deposit: `${API_BASE_URL}/api/deposit`,

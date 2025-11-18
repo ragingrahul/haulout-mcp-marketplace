@@ -57,8 +57,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
               // Token invalid, clear storage
               StorageService.clearAll();
             }
-          } catch {
+          } catch (profileError) {
             // Token expired or invalid, try to refresh
+            console.log("ℹ️ Session expired, attempting to refresh...");
             if (storedRefreshToken) {
               try {
                 const response = await AuthService.refreshToken(
@@ -77,19 +78,25 @@ export function AuthProvider({ children }: AuthProviderProps) {
                   if (response.user) {
                     StorageService.saveUser(response.user);
                   }
+                  console.log("✅ Session refreshed successfully");
                 } else {
+                  console.log(
+                    "ℹ️ Session could not be refreshed, clearing storage"
+                  );
                   StorageService.clearAll();
                 }
-              } catch {
+              } catch (refreshError) {
+                console.log("ℹ️ Refresh token invalid, clearing storage");
                 StorageService.clearAll();
               }
             } else {
+              console.log("ℹ️ No refresh token available, clearing storage");
               StorageService.clearAll();
             }
           }
         }
       } catch (error) {
-        console.error("Error initializing auth:", error);
+        console.warn("⚠️ Error initializing auth:", error);
         StorageService.clearAll();
       } finally {
         setIsLoading(false);
