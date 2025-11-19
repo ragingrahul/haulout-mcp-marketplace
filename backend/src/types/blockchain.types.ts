@@ -191,3 +191,34 @@ export interface ChainConfiguration {
     explorerUrl: string;
   };
 }
+
+/**
+ * Walrus blob metadata
+ */
+export interface WalrusBlob {
+  blobId: string;
+  size: number;
+  uploadedAt: string;
+}
+
+/**
+ * Sui endpoint object representation
+ */
+export interface SuiEndpoint {
+  objectId: string;
+  owner: string;
+  walrusBlobId: string;
+  pricePerCall: string; // MIST as string
+  totalCalls: number;
+  active: boolean;
+  createdAt: number;
+}
+
+/**
+ * Blockchain-aware endpoint (extends API endpoint)
+ */
+export interface BlockchainEndpoint {
+  objectId?: string; // Sui object ID
+  walrusBlobId?: string; // Walrus blob pointer
+  onChain?: boolean; // Whether stored on blockchain
+}

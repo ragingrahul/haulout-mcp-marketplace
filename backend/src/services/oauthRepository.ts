@@ -99,6 +99,7 @@ export async function assignDCRClientToUser(
 export async function getOAuthClient(
   clientId: string
 ): Promise<OAuthClient | null> {
+  console.log(`[OAuthRepo] Querying Supabase for client: ${clientId}`);
   const { data, error } = await supabaseAdmin
     .from("oauth_clients")
     .select("*")
@@ -106,10 +107,20 @@ export async function getOAuthClient(
     .eq("revoked", false)
     .single();
 
-  if (error || !data) {
+  if (error) {
+    console.log(`[OAuthRepo] Supabase error: ${error.code} - ${error.message}`);
+    if (error.code === "PGRST116") {
+      console.log(`[OAuthRepo] No rows found for client: ${clientId}`);
+    }
     return null;
   }
 
+  if (!data) {
+    console.log(`[OAuthRepo] No data returned for client: ${clientId}`);
+    return null;
+  }
+
+  console.log(`[OAuthRepo] Client data retrieved: ${clientId}`);
   return data as OAuthClient;
 }
 
@@ -120,11 +131,17 @@ export async function verifyOAuthClient(
   clientId: string,
   clientSecret: string
 ): Promise<OAuthClient | null> {
+  console.log(`[OAuthRepo] Looking up client: ${clientId}`);
   const client = await getOAuthClient(clientId);
 
   if (!client) {
+    console.log(`[OAuthRepo] ❌ Client not found in database: ${clientId}`);
     return null;
   }
+
+  console.log(
+    `[OAuthRepo] ✅ Client found: ${clientId}, revoked: ${client.revoked}`
+  );
 
   // Verify secret
   const secretValid = await bcrypt.compare(
@@ -133,9 +150,13 @@ export async function verifyOAuthClient(
   );
 
   if (!secretValid) {
+    console.log(
+      `[OAuthRepo] ❌ Client secret verification failed for: ${clientId}`
+    );
     return null;
   }
 
+  console.log(`[OAuthRepo] ✅ Client secret verified for: ${clientId}`);
   return client;
 }
 
