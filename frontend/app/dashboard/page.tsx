@@ -72,7 +72,7 @@ export default function Page() {
         //eslint-disable-next-line @typescript-eslint/no-explicit-any
       } catch (err: any) {
         setError(err.message || "Failed to load marketplace");
-        console.error("Error fetching marketplace:", err);
+        console.warn("⚠️ Error fetching marketplace:", err.message);
       } finally {
         setIsLoading(false);
       }
@@ -89,7 +89,9 @@ export default function Page() {
 
   const getMcpUrl = (developerId: string) => {
     if (!user) return "";
-    return `${API_BASE_URL}/mcp/${developerId}/user/${user.id}`;
+    // OAuth-protected MCP URL format: /mcp/{developerId}
+    // OAuth token will identify the user (no need for /user/{userId})
+    return `${API_BASE_URL}/mcp/${developerId}`;
   };
 
   const copyToClipboard = async (text: string) => {
@@ -98,7 +100,7 @@ export default function Page() {
       setCopiedUrl(true);
       setTimeout(() => setCopiedUrl(false), 2000);
     } catch (err) {
-      console.error("Failed to copy:", err);
+      console.log("ℹ️ Failed to copy to clipboard:", err);
     }
   };
 
@@ -358,16 +360,52 @@ export default function Page() {
                     )}
                   </Button>
                 </div>
-                <div className="bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg p-3 text-sm">
-                  <p className="font-medium text-blue-900 dark:text-blue-100 mb-1">
-                    How to add to Claude:
-                  </p>
-                  <ol className="list-decimal list-inside space-y-1 text-blue-800 dark:text-blue-200">
-                    <li>Open Claude Desktop</li>
-                    <li>Go to Settings → Developer</li>
-                    <li>Add new MCP server with the URL above</li>
-                    <li>Restart Claude Desktop</li>
-                  </ol>
+                <div className="space-y-3">
+                  <div className="bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg p-3 text-sm">
+                    <p className="font-medium text-blue-900 dark:text-blue-100 mb-1">
+                      🔵 For Claude Desktop:
+                    </p>
+                    <ol className="list-decimal list-inside space-y-1 text-blue-800 dark:text-blue-200">
+                      <li>
+                        Create OAuth credentials in your <strong>Wallet</strong>{" "}
+                        page
+                      </li>
+                      <li>
+                        Copy the{" "}
+                        <code className="bg-blue-100 dark:bg-blue-900 px-1 rounded">
+                          client_id
+                        </code>{" "}
+                        and{" "}
+                        <code className="bg-blue-100 dark:bg-blue-900 px-1 rounded">
+                          client_secret
+                        </code>
+                      </li>
+                      <li>
+                        Open Claude Desktop and go to Settings → Developer
+                      </li>
+                      <li>
+                        Add new MCP server with the URL above and your OAuth
+                        credentials
+                      </li>
+                      <li>
+                        Restart Claude Desktop and authorize when prompted
+                      </li>
+                    </ol>
+                  </div>
+
+                  <div className="bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-800 rounded-lg p-3 text-sm">
+                    <p className="font-medium text-green-900 dark:text-green-100 mb-1">
+                      🤖 For OpenAI / ChatGPT:
+                    </p>
+                    <p className="text-green-800 dark:text-green-200 mb-2 text-xs">
+                      Uses Dynamic Client Registration (DCR) - easier setup!
+                    </p>
+                    <ol className="list-decimal list-inside space-y-1 text-green-800 dark:text-green-200">
+                      <li>Just paste the MCP URL above in ChatGPT settings</li>
+                      <li>OpenAI automatically handles authentication</li>
+                      <li>Authorize when prompted - done!</li>
+                    </ol>
+                  </div>
                 </div>
               </div>
 

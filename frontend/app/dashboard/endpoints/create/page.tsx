@@ -29,12 +29,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { AlertCircle, Check, Plus, Code2 } from "lucide-react";
+import { AlertCircle, Check, Plus, Code2, Wallet } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { useWallet } from "@suiet/wallet-kit";
+import { Transaction } from "@mysten/sui/transactions";
 
 export default function CreateEndpointPage() {
   const { accessToken } = useAuth();
   const router = useRouter();
+  const { connected, signAndExecuteTransactionBlock } = useWallet();
 
   // Form state
   const [name, setName] = useState("");
@@ -108,6 +111,12 @@ export default function CreateEndpointPage() {
       return;
     }
 
+    // Check wallet connection
+    if (!connected) {
+      setError("Please connect your Sui wallet to create an endpoint");
+      return;
+    }
+
     // Validation
     if (!name.trim()) {
       setError("Endpoint name is required");
@@ -160,35 +169,122 @@ export default function CreateEndpointPage() {
         response_type: responseType,
       };
 
-      const response = await EndpointService.createEndpoint(
+      // Step 1: Prepare transaction
+      console.log("=== STEP 1: PREPARING TRANSACTION ===");
+      console.log("Wallet connected:", connected);
+      console.log(
+        "signAndExecuteTransactionBlock function:",
+        typeof signAndExecuteTransactionBlock
+      );
+
+      const prepareResponse = await EndpointService.prepareEndpoint(
         accessToken,
         endpointData
       );
 
-      if (response.success) {
-        setSuccess(true);
-        // Reset form
-        setName("");
-        setDescription("");
-        setUrl("");
-        setMethod("GET");
-        setHeaders([{ key: "", value: "" }]);
-        setParameters([
-          { name: "", type: "string", required: false, description: "" },
-        ]);
-        setResponseType("json");
+      console.log(
+        "Prepare response:",
+        JSON.stringify(prepareResponse, null, 2)
+      );
 
-        // Redirect to manage endpoints after 2 seconds
-        setTimeout(() => {
-          router.push("/dashboard/endpoints/manage");
-        }, 2000);
-      } else {
-        setError(response.message || "Failed to create endpoint");
+      if (!prepareResponse.success || !prepareResponse.transaction) {
+        setError(prepareResponse.message || "Failed to prepare transaction");
+        return;
+      }
+
+      const { transaction } = prepareResponse;
+      const walrusBlobId = transaction.walrusBlobId;
+      console.log("=== STEP 2: DESERIALIZING & SIGNING TRANSACTION ===");
+      console.log("Walrus Blob ID:", walrusBlobId);
+      console.log(
+        "Transaction serialized (first 100 chars):",
+        transaction.serialized?.substring(0, 100)
+      );
+
+      try {
+        // Step 2: Deserialize transaction and sign with user's wallet
+        const txBytes = Buffer.from(transaction.serialized, "base64");
+        console.log("Transaction bytes length:", txBytes.length);
+
+        const tx = Transaction.from(txBytes);
+        console.log("Transaction deserialized successfully");
+
+        console.log("About to call signAndExecuteTransactionBlock...");
+        console.log("Transaction block:", tx);
+
+        const txResult = await signAndExecuteTransactionBlock({
+          transactionBlock: tx,
+          options: {
+            showEffects: true,
+            showObjectChanges: true,
+            showEvents: true,
+          },
+        });
+
+        console.log("=== WALLET SIGNING COMPLETED ===");
+        console.log("Transaction result:", txResult);
+
+        if (!txResult.digest) {
+          setError("Transaction failed - no digest returned");
+          return;
+        }
+
+        console.log("=== STEP 3: COMPLETING ENDPOINT CREATION ===");
+        console.log("Transaction digest:", txResult.digest);
+        console.log("Walrus Blob ID:", walrusBlobId);
+        console.log("Endpoint data:", endpointData);
+        console.log("Calling completeEndpoint with:", {
+          txDigest: txResult.digest,
+          walrusBlobId: walrusBlobId,
+          endpoint: endpointData,
+        });
+
+        // Step 3: Complete endpoint creation
+        const completeResponse = await EndpointService.completeEndpoint(
+          accessToken,
+          txResult.digest,
+          walrusBlobId,
+          endpointData
+        );
+
+        console.log("Complete response:", completeResponse);
+
+        if (completeResponse.success) {
+          setSuccess(true);
+          console.log("=== SUCCESS! ===");
+          console.log("Endpoint created:", completeResponse.endpoint);
+
+          // Reset form
+          setName("");
+          setDescription("");
+          setUrl("");
+          setMethod("GET");
+          setHeaders([{ key: "", value: "" }]);
+          setParameters([
+            { name: "", type: "string", required: false, description: "" },
+          ]);
+          setResponseType("json");
+
+          // Redirect to manage endpoints after 2 seconds
+          setTimeout(() => {
+            router.push("/dashboard/endpoints/manage");
+          }, 2000);
+        } else {
+          setError(
+            completeResponse.message || "Failed to complete endpoint creation"
+          );
+        }
+      } catch (signError) {
+        console.warn("⚠️ Transaction signing failed:");
+        console.warn("Sign error:", (signError as Error)?.message);
+        throw signError;
       }
     } catch (err) {
+      console.warn("⚠️ Endpoint creation failed:");
+      console.warn("Error message:", (err as Error)?.message);
+
       const error = err as Error;
       setError(error.message || "Error creating endpoint");
-      console.error("Error creating endpoint:", err);
     } finally {
       setIsSubmitting(false);
     }
@@ -216,6 +312,18 @@ export default function CreateEndpointPage() {
           </header>
 
           <div className="flex flex-1 flex-col gap-4 p-4">
+            {/* Wallet Connection Warning */}
+            {!connected && (
+              <div className="bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg p-3 flex items-start gap-2">
+                <Wallet className="h-4 w-4 text-blue-600 mt-0.5" />
+                <p className="text-sm text-blue-900 dark:text-blue-100">
+                  Please connect your Sui wallet to create endpoints. Your
+                  wallet will sign the transaction to ensure you own the
+                  endpoint.
+                </p>
+              </div>
+            )}
+
             {/* Success/Error Messages */}
             {error && (
               <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-3 flex items-start gap-2">

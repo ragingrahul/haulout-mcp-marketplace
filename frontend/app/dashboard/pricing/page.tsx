@@ -85,13 +85,30 @@ export default function PricingManagementPage() {
 
           setPaidEndpoints(paid);
           setFreeEndpoints(free);
+
+          // Show info message if wallet not connected
+          if (!response.wallet_connected) {
+            console.log(
+              "ℹ️ Wallet not connected. Connect wallet to see endpoints."
+            );
+          }
         } else {
           setError(response.message || "Failed to load endpoints");
         }
       } catch (err) {
         const error = err as Error;
-        setError(error.message || "Error loading endpoints");
-        console.error("Error fetching endpoints:", err);
+        // Don't show error for wallet not connected - this is expected
+        if (error.message?.includes("wallet address not found")) {
+          console.log(
+            "ℹ️ Wallet not connected yet. Connect wallet to see endpoints."
+          );
+          setAllEndpoints([]);
+          setPaidEndpoints([]);
+          setFreeEndpoints([]);
+        } else {
+          setError(error.message || "Error loading endpoints");
+          console.warn("⚠️ Error fetching endpoints:", err);
+        }
       } finally {
         setIsLoading(false);
       }

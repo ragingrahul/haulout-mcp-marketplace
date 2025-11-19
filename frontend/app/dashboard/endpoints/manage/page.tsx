@@ -115,7 +115,7 @@ export default function ManageEndpointsPage() {
       } catch (err) {
         const error = err as Error;
         setError(error.message || "Error loading endpoints");
-        console.error("Error fetching endpoints:", err);
+        console.warn("⚠️ Error fetching endpoints:", error.message);
       } finally {
         setIsLoading(false);
       }
@@ -216,7 +216,7 @@ export default function ManageEndpointsPage() {
         }, 1500);
       }
     } catch (err) {
-      console.error("Error updating endpoint:", err);
+      console.warn("⚠️ Error updating endpoint:", (err as Error).message);
     } finally {
       setIsUpdating(false);
     }
@@ -243,7 +243,7 @@ export default function ManageEndpointsPage() {
         setIsDeleteDialogOpen(false);
       }
     } catch (err) {
-      console.error("Error deleting endpoint:", err);
+      console.warn("⚠️ Error deleting endpoint:", (err as Error).message);
     } finally {
       setIsDeleting(false);
     }
@@ -255,7 +255,7 @@ export default function ManageEndpointsPage() {
       setCopiedId(id);
       setTimeout(() => setCopiedId(null), 2000);
     } catch (err) {
-      console.error("Failed to copy:", err);
+      console.log("ℹ️ Failed to copy to clipboard:", err);
     }
   };
 
