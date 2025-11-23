@@ -131,10 +131,18 @@ export async function signup(req: Request, res: Response): Promise<void> {
     const fullName = await getFullNameFromProfile(data.user.id);
     log.info(`[AuthController] Fetched full_name from profile: ${fullName}`);
 
+    // Note: wallet_address will be null until user connects browser wallet
+    log.info(
+      `[AuthController] User can connect browser wallet later (Suiet, Ethos, etc.)`
+    );
+
     res.status(201).json({
       success: true,
       message: "User created successfully",
-      user: toAuthUser(data.user, fullName),
+      user: {
+        ...toAuthUser(data.user, fullName),
+        wallet_address: null, // User will connect wallet via frontend
+      },
       session: {
         access_token: data.session?.access_token,
         refresh_token: data.session?.refresh_token,

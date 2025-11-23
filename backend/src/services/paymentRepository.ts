@@ -141,6 +141,30 @@ export async function markPaymentSubmitted(
 }
 
 /**
+ * Update payment status (helper function)
+ */
+export async function updatePaymentStatus(
+  paymentId: string,
+  status: PaymentStatus,
+  txHash?: string,
+  accessToken?: string
+): Promise<PaymentTransaction> {
+  const updates: Partial<PaymentTransaction> = {
+    status,
+  };
+
+  if (txHash) {
+    updates.blockchain_tx_hash = txHash;
+  }
+
+  if (status === PaymentStatus.COMPLETED) {
+    updates.completed_at = new Date().toISOString();
+  }
+
+  return updatePaymentTransaction(paymentId, updates, accessToken);
+}
+
+/**
  * Mark payment as completed
  */
 export async function markPaymentCompleted(

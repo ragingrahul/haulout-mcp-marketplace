@@ -298,37 +298,90 @@ export async function getEndpointsByUserId(
 
 /**
  * Get all endpoints for a user (public read via RLS)
- * Uses anon key with public SELECT policy - no auth needed for reading
+ * NOW READS FROM BLOCKCHAIN-BACKED user_endpoints TABLE
  * This is used for server initialization to load endpoints for MCP servers
- * Includes pricing information via LEFT JOIN
  */
 export async function getEndpointsByUserIdServerSide(
   userId: string
 ): Promise<APIEndpoint[]> {
-  // Use anon client - RLS allows public SELECT on endpoints (marketplace model)
-  const { data, error } = await supabase
-    .from("endpoints")
-    .select(
-      `
-      *,
-      endpoint_pricing (
-        price_per_call_eth,
-        developer_wallet_address
-      )
-    `
-    )
-    .eq("user_id", userId)
-    .order("created_at", { ascending: false });
+  try {
+    log.info(`[EndpointRepo] Fetching blockchain endpoints for user ${userId}`);
 
-  if (error) {
+    // First, get user's wallet address from profile
+    const { data: profile, error: profileError } = await supabase
+      .from("profiles")
+      .select("wallet_address")
+      .eq("id", userId)
+      .single();
+
+    if (profileError || !profile?.wallet_address) {
+      log.info(`[EndpointRepo] No wallet address found for user ${userId}`);
+      return [];
+    }
+
+    const walletAddress = profile.wallet_address;
+    log.info(`[EndpointRepo] User ${userId} wallet: ${walletAddress}`);
+
+    // Get endpoints from blockchain-backed user_endpoints table
+    const { data: mappings, error: mappingsError } = await supabase
+      .from("user_endpoints")
+      .select(
+        "endpoint_object_id, user_id, endpoint_name, endpoint_data, walrus_blob_id, wallet_address, created_at"
+      )
+      .eq("wallet_address", walletAddress)
+      .order("created_at", { ascending: false });
+
+    if (mappingsError) {
+      log.error(
+        `[EndpointRepo] Failed to fetch endpoint mappings: ${mappingsError.message}`,
+        mappingsError
+      );
+      throw new Error(`Failed to fetch endpoints: ${mappingsError.message}`);
+    }
+
+    if (!mappings || mappings.length === 0) {
+      log.info(
+        `[EndpointRepo] No blockchain endpoints found for user ${userId}`
+      );
+      return [];
+    }
+
+    log.info(
+      `[EndpointRepo] Found ${mappings.length} blockchain endpoints for user ${userId}`
+    );
+
+    // Convert mappings to APIEndpoint format
+    const endpoints: APIEndpoint[] = mappings.map((mapping: any) => {
+      const data = mapping.endpoint_data;
+      return {
+        id: mapping.endpoint_object_id,
+        objectId: mapping.endpoint_object_id,
+        name: data.name,
+        url: data.url,
+        method: data.method as any,
+        description: data.description || "",
+        parameters: data.parameters || [],
+        headers: data.headers || {},
+        responseType: data.responseType || "json",
+        timeout: data.timeout,
+        user_id: mapping.user_id,
+        created_at: mapping.created_at,
+        updated_at: mapping.created_at,
+        price_per_call_eth: data.price_per_call_eth || "0",
+        developer_wallet_address: mapping.wallet_address,
+        walrusBlobId: mapping.walrus_blob_id,
+        onChain: true,
+      };
+    });
+
+    return endpoints;
+  } catch (error: any) {
     log.error(
-      `Failed to fetch endpoints for user ${userId}: ${error.message}`,
+      `[EndpointRepo] Error fetching endpoints for user ${userId}: ${error.message}`,
       error
     );
-    throw new Error(`Failed to fetch endpoints: ${error.message}`);
+    throw error;
   }
-
-  return data.map(toAPIEndpoint);
 }
 
 /**

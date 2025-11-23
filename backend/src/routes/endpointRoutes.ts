@@ -26,7 +26,17 @@ export function createEndpointRoutes(registry: MCPServerRegistry): Router {
     endpointController.getMarketplace(req, res);
   });
 
-  // POST /api/endpoints - Add a new endpoint (requires auth)
+  // POST /api/endpoints/prepare - Prepare endpoint (returns transaction to sign)
+  router.post("/prepare", (req, res) => {
+    endpointController.prepareEndpoint(req, res);
+  });
+
+  // POST /api/endpoints/complete - Complete endpoint after user signs transaction
+  router.post("/complete", (req, res) => {
+    endpointController.completeEndpoint(req, res, registry);
+  });
+
+  // POST /api/endpoints - Add a new endpoint (DEPRECATED - uses server signing)
   router.post("/", (req, res) => {
     endpointController.addEndpoint(req, res, registry);
   });
